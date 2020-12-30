@@ -16,8 +16,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+# Need ffmpeg
+# If you have problem with pocketsphinx check https://github.com/bambocher/pocketsphinx-python/issues/28
+
 import sys
+import json
+import argparse
+from os import path
 from pydub import AudioSegment
+from pydub.playback import play, _play_with_ffplay
+import speech_recognition as sr
+
+VERSION = '0.0.2'
 
 nato = [
     'alfa', 'bravo', 'charlie', 'delta',     #  0-3
@@ -74,44 +84,169 @@ conv = {
  },
 }
 
-if len(sys.argv) == 2:
-    fingerprint = sys.argv[1].lower().replace(' ', '')
+def main():
+    parser = argparse.ArgumentParser(description='NATO alphabet encoder/decoder.')
 
-    result = ''
-    result_sound =  AudioSegment.from_wav(f"sounds/{conv['special']['silence']}.wav")
+    subparsers = parser.add_subparsers(dest='command')
+    subparsers.required = True
 
-    result = f"{result}{conv['special']['start']} "
-    result = f"{result}{conv['special']['start']} "
-    result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['special']['start']}.wav")
-    result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['special']['silence']}.wav")
-    result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['special']['start']}.wav")
-    result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['special']['silence']}.wav")
+    parser_encode = subparsers.add_parser('encode')
+    parser_encode.add_argument('-f', '--filename', help='Audio output filename (.wav)', required=False)
+    parser_encode.add_argument('-s', '--speaker', help='Audio output on speakers', action='store_true')
+    parser_encode.add_argument('-A', '--ascii-message', help='Message', required=False)
+    parser_encode.add_argument('-H', '--hex-message', help='Message', required=False)
 
-    for i in range(0, len(fingerprint)):
-        if i % 2 == 0: # Even
-            result = f"{result}{conv['even'][fingerprint[i]]} "
-            result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['even'][fingerprint[i]]}.wav")
+    parser_decode = subparsers.add_parser('decode')
+    parser_decode.add_argument('-f', '--filename', help='Audio input filename (.wav) - Hic sunt leones!', required=False)
+    parser_decode.add_argument('-m', '--mic', help='Audio input from microphone - Hic sunt leones!', required=False)
+    parser_decode.add_argument('-M', '--message', help='Message', required=False)
+
+    parser_map = subparsers.add_parser('map')
+
+    parser_version = subparsers.add_parser('version')
+
+    args = parser.parse_args()
+
+    if args.command == 'encode':
+
+        if args.ascii_message is not None or args.hex_message is not None:
+
+            if args.ascii_message is not None:
+                fingerprint = args.ascii_message.encode('ascii').hex().lower().replace(' ', '')
+
+            elif args.hex_message is not None:
+                fingerprint = args.hex_message.lower().replace(' ', '')
+
+            result = ''
+            result_sound =  AudioSegment.from_wav(f"sounds/{conv['special']['silence']}.wav")
+
+            result = f"{result}{conv['special']['start']} "
+            result = f"{result}{conv['special']['start']} "
+            result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['special']['start']}.wav")
             result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['special']['silence']}.wav")
-        else: # Odd
-            result = result + conv['odd'][fingerprint[i]] + ' '
-            result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['odd'][fingerprint[i]]}.wav")
+            result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['special']['start']}.wav")
             result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['special']['silence']}.wav")
 
-    print(result)
-    result_sound.export('result.wav', format='wav')
-else:
-    words = sys.argv[1:]
-    even = True
-    result = ''
-    for i in words:
-        if not i == conv['special']['start']:
-            if even:
-                even = False
-                character = list(conv['even'].keys())[list(conv['even'].values()).index(i)]
-                result = f'{result}{character}'
-            else:
-                even = True
-                character = list(conv['odd'].keys())[list(conv['odd'].values()).index(i)]
-                result = f'{result}{character}'
+            for i in range(0, len(fingerprint)):
+                if i % 2 == 0: # Even
+                    result = f"{result}{conv['even'][fingerprint[i]]} "
+                    result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['even'][fingerprint[i]]}.wav")
+                    result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['special']['silence']}.wav")
+                else: # Odd
+                    result = result + conv['odd'][fingerprint[i]] + ' '
+                    result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['odd'][fingerprint[i]]}.wav")
+                    result_sound = result_sound + AudioSegment.from_wav(f"sounds/{conv['special']['silence']}.wav")
 
-    print(result)
+            print(result)
+
+            if args.filename is not None:
+                result_sound.export(args.filename, format='wav')
+            if args.speaker:
+                _play_with_ffplay(result_sound)
+
+        else:
+            print('Missing ascii or hex message parameter')
+
+    elif args.command == 'decode':
+
+        if args.filename is not None or args.mic is not None or args.message is not None:
+
+            if args.mic is not None:
+                r = sr.Recognizer()
+                with sr.Microphone() as source:
+                    print('Say something!')
+                    audio = r.listen(source)
+                try:
+                    # words = r.recognize_sphinx(audio).lower()
+                    words = r.recognize_google(audio).lower() # better performace, less privacy
+                except sr.UnknownValueError:
+                    print('Could not understand audio')
+                except sr.RequestError as e:
+                    print('Error; {0}'.format(e))
+
+            if args.filename is not None:
+                r = sr.Recognizer()
+                with sr.AudioFile(path.join(path.dirname(path.realpath(__file__)), args.filename)) as source:
+                    audio = r.record(source)
+                try:
+                    # words = r.recognize_sphinx(audio).lower()
+                    words = r.recognize_google(audio).lower() # better performace, less privacy
+                except sr.UnknownValueError:
+                    print('Could not understand audio')
+                except sr.RequestError as e:
+                    print('Error; {0}'.format(e))
+
+            elif args.message is not None:
+                words = args.message.lower()
+
+            # correct well known mistakes
+            words = words.replace('0', 'zero ')
+            words = words.replace('1', 'one ')
+            words = words.replace('2', 'two ')
+            words = words.replace('3', 'three ')
+            words = words.replace('4', 'four ')
+            words = words.replace('5', 'five ')
+            words = words.replace('6', 'six ')
+            words = words.replace('8', 'seven ')
+            words = words.replace('8', 'eight ')
+            words = words.replace('9', 'nine ')
+            words = words.replace('alpha', 'alfa')
+            words = words.replace('to extract', 'foxtrot')
+            words = words.replace('for', 'four')
+            words = words.replace('to', 'two')
+            words = words.replace('unifourm', 'uniform')
+            words = words.replace('juliet', 'juliett')
+            words = words.replace('victwor', 'victor')
+            words = words.replace('x-ray', 'xray')
+            words = words.replace('is', '')
+            words = words.replace('dell ten', 'delta')
+            words = words.replace('stocks tracts', 'foxtrot')
+            words = words.replace('stwocks tracts', 'foxtrot')
+            words = words.replace('indiana', 'india')
+            words = words.replace('might be', 'mike')
+            words = words.replace('x. ray', 'xray')
+            words = words.replace('soon', 'zulu')
+            words = words.replace('whkey', 'whiskey')
+            words = words.replace('   ', ' ')
+            words = words.replace('  ', ' ')
+            words = ' '.join(words.split())
+            print(words)
+
+            words = words.split(' ')
+            even = True
+            result = ''
+            for i in words:
+                if not i == conv['special']['start']:
+                    if even:
+                        even = False
+                        character = list(conv['even'].keys())[list(conv['even'].values()).index(i)]
+                        result = f'{result}{character}'
+                    else:
+                        even = True
+                        character = list(conv['odd'].keys())[list(conv['odd'].values()).index(i)]
+                        result = f'{result}{character}'
+
+            print(result)
+
+        else:
+            print('Missing filename or message parameter')
+
+    elif args.command == 'map':
+        print(json.dumps(conv, sort_keys=True, indent=4))
+
+    elif args.command == 'version':
+        print('NATO encoder - Version {}'.format(VERSION))
+        print('GNU GENERAL PUBLIC LICENSE, Version 3')
+        print('')
+        print('')
+        print('GREETINGS PROFESSOR FALKEN')
+        print('')
+        print('HELLO')
+        print('')
+        print('A STRANGE GAME.')
+        print('THE ONLY WINNING MOVE IS')
+        print('NOT TO PLAY.')
+
+
+if __name__ == '__main__':
+    main()

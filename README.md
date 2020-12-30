@@ -3,7 +3,7 @@
 Encode hexadecimal string using the nato alphabet/numbers.
 
 ```
-python3 nato_encoder.py deadbeef
+python3 nato_encoder.py encode -M "deadbeef" -f "result.wav"
 
 zero zero one four uniform two whiskey four three six
 ```
@@ -13,9 +13,23 @@ The file `result.wav` contain an audio version of the result phrase (created loc
 You can decode the nato string in the same manner.
 
 ```
-python3 nato_encoder.py zero zero one four uniform two whiskey four three six
+python3 nato_encoder.py decode -M "zero zero one four uniform two whiskey four three six"
 
 deadbeef
+```
+
+The `-h` argument can help you understanding how this program is working.
+
+```
+usage: nato_encoder.py [-h] {encode,decode,map,version} ...
+
+NATO alphabet encoder/decoder.
+
+positional arguments:
+  {encode,decode,map,version}
+
+optional arguments:
+  -h, --help            show this help message and exit
 ```
 
 ## Protocol
@@ -72,7 +86,8 @@ Second nibble of the byte is encoded with a different set of nato chars:
 
 ### Dependencies
 
-- `pydub` used for create an unique wav file.
+- `pydub` used for create an unique wav file,
+- `speech_recognition` used for STT conversion.
 
 ## License
 
